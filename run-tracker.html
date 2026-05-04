@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0a">
+<title>Pace — Run Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  :root {
+    --green: #00e676;
+    --green-dim: #00c864;
+    --green-dark: #004d26;
+    --bg: #0a0a0a;
+    --surface: #141414;
+    --surface2: #1e1e1e;
+    --surface3: #282828;
+    --border: rgba(255,255,255,0.08);
+    --text: #ffffff;
+    --text2: rgba(255,255,255,0.55);
+    --text3: rgba(255,255,255,0.3);
+    --red: #ff4d4d;
+    --amber: #ffb300;
+    --blue: #40c4ff;
+    --radius: 16px;
+    --radius-sm: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Barlow', sans-serif; overflow: hidden; }
+  #app { display: flex; flex-direction: column; height: 100dvh; height: 100vh; }
+
+  #header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px 10px; background: var(--bg); flex-shrink: 0; }
+  #header h1 { font-family: 'Barlow Condensed', sans-serif; font-size: 28px; font-weight: 800; letter-spacing: .04em; color: var(--green); }
+  #activity-type { display: flex; gap: 6px; }
+  .act-btn { padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; border: 1px solid var(--border); background: transparent; color: var(--text2); cursor: pointer; transition: all .15s; font-family: 'Barlow', sans-serif; }
+  .act-btn.active { background: var(--green); color: #000; border-color: var(--green); }
+
+  #tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg); flex-shrink: 0; }
+  .tab { flex: 1; padding: 10px 0; text-align: center; font-size: 12px; font-weight: 600; color: var(--text3); cursor: pointer; letter-spacing: .06em; text-transform: uppercase; border-bottom: 2px solid transparent; transition: all .15s; }
+  .tab.active { color: var(--green); border-bottom-color: var(--green); }
+
+  #panels { flex: 1; overflow: hidden; position: relative; min-height: 0; }
+  .panel { position: absolute; inset: 0; overflow-y: auto; display: none; padding: 16px 16px 100px; }
+  .panel.active { display: block; }
+
+  /* RECORD */
+  #big-stats { background: var(--surface); border-radius: var(--radius); padding: 20px 16px 16px; margin-bottom: 12px; }
+  .primary-stat { text-align: center; margin-bottom: 16px; }
+  .primary-label { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text2); margin-bottom: 4px; }
+  .primary-value { font-family: 'Barlow Condensed', sans-serif; font-size: 80px; font-weight: 800; line-height: 1; color: var(--green); }
+  .primary-unit { font-size: 18px; color: var(--text2); margin-left: 4px; }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .stat-box { background: var(--surface2); border-radius: var(--radius-sm); padding: 10px; text-align: center; }
+  .stat-box .lbl { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); margin-bottom: 4px; }
+  .stat-box .val { font-family: 'Barlow Condensed', sans-serif; font-size: 26px; font-weight: 700; line-height: 1; }
+  .stat-box .unit { font-size: 11px; color: var(--text2); }
+
+  #mini-map-wrap { border-radius: var(--radius); overflow: hidden; margin-bottom: 12px; position: relative; height: 200px; }
+  #mini-map { width: 100%; height: 200px; }
+  #map-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: var(--surface); pointer-events: none; z-index: 500; }
+  #map-empty .icon { font-size: 32px; opacity: .3; }
+  #map-empty p { font-size: 13px; color: var(--text3); }
+
+  #controls { display: flex; gap: 10px; margin-bottom: 12px; }
+  .ctrl-btn { flex: 1; padding: 18px 0; border-radius: var(--radius); font-family: 'Barlow Condensed', sans-serif; font-size: 20px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; border: none; cursor: pointer; transition: all .15s; }
+  .ctrl-btn:active { transform: scale(0.97); }
+  #btn-start { background: var(--green); color: #000; }
+  #btn-start:hover { background: var(--green-dim); }
+  #btn-pause { background: var(--amber); color: #000; }
+  #btn-stop { background: var(--red); color: #fff; }
+  .ctrl-btn:disabled { opacity: .3; cursor: not-allowed; transform: none; }
+
+  #btn-save-run { width: 100%; padding: 16px; border-radius: var(--radius); font-family: 'Barlow Condensed', sans-serif; font-size: 18px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: var(--surface2); border: 1px solid var(--border); color: var(--text2); cursor: pointer; transition: all .15s; margin-bottom: 12px; }
+  #btn-save-run:not(:disabled):hover { background: var(--surface3); color: var(--text); }
+  #btn-save-run:disabled { opacity: .3; cursor: not-allowed; }
+
+  #status { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--surface); border-radius: var(--radius-sm); font-size: 13px; color: var(--text2); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
+  .status-dot.live { background: var(--green); animation: blink 1.4s infinite; }
+  .status-dot.paused { background: var(--amber); }
+  @keyframes blink { 0%,100%{opacity:1}50%{opacity:.3} }
+
+  /* MAP PANEL — full bleed */
+  #panel-map { padding: 0 !important; overflow: hidden !important; }
+  #big-map { width: 100%; height: 100%; }
+  #map-overlay {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 1000;
+    background: linear-gradient(transparent, rgba(10,10,10,0.97) 35%);
+    padding: 20px 16px 110px; pointer-events: none;
+  }
+  .elev-card { background: rgba(20,20,20,0.93); border-radius: var(--radius); border: 1px solid var(--border); padding: 14px; pointer-events: all; }
+  #elev-title { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text2); margin-bottom: 10px; }
+  #elev-canvas { display: block; width: 100%; height: 80px; }
+  #elev-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .elev-stat { text-align: center; }
+  .elev-stat .lbl { font-size: 10px; color: var(--text3); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+  .elev-stat .val { font-family: 'Barlow Condensed', sans-serif; font-size: 20px; font-weight: 700; }
+
+  /* HISTORY */
+  #no-history { text-align: center; padding: 60px 20px; color: var(--text3); }
+  #no-history .icon { font-size: 48px; margin-bottom: 12px; opacity: .4; }
+  #no-history p { font-size: 14px; }
+  .history-item { background: var(--surface); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; cursor: pointer; border: 1px solid transparent; transition: border-color .15s; }
+  .history-item:active { border-color: var(--green); }
+  .history-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .history-name { font-weight: 600; font-size: 15px; }
+  .history-date { font-size: 12px; color: var(--text3); margin-top: 2px; }
+  .history-type { font-size: 11px; font-weight: 700; letter-spacing: .06em; padding: 3px 8px; border-radius: 20px; background: var(--green-dark); color: var(--green); }
+  .history-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+  .hs { text-align: center; }
+  .hs .lbl { font-size: 10px; color: var(--text3); font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+  .hs .val { font-family: 'Barlow Condensed', sans-serif; font-size: 18px; font-weight: 700; }
+  .hs .unit { font-size: 10px; color: var(--text2); }
+  .export-row { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .export-btn { flex: 1; padding: 8px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; border: 1px solid var(--border); background: var(--surface2); color: var(--text2); cursor: pointer; font-family: 'Barlow', sans-serif; transition: all .15s; }
+  .export-btn:hover { background: var(--surface3); color: var(--text); }
+
+  /* SETTINGS */
+  .setting-section { margin-bottom: 20px; }
+  .setting-section-title { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text3); margin-bottom: 10px; }
+  .setting-row { background: var(--surface); border-radius: var(--radius-sm); padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .setting-label { font-size: 14px; font-weight: 500; }
+  .setting-sub { font-size: 12px; color: var(--text3); margin-top: 2px; }
+  .toggle { position: relative; width: 44px; height: 26px; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider { position: absolute; inset: 0; background: var(--surface3); border-radius: 13px; cursor: pointer; transition: .2s; }
+  .toggle-slider:before { content: ''; position: absolute; width: 20px; height: 20px; border-radius: 50%; background: #fff; top: 3px; left: 3px; transition: .2s; }
+  input:checked + .toggle-slider { background: var(--green); }
+  input:checked + .toggle-slider:before { transform: translateX(18px); }
+  select.setting-select { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 13px; font-family: 'Barlow', sans-serif; }
+
+  /* Leaflet dark mode */
+  .dark-tiles .leaflet-tile-pane { filter: brightness(0.85) saturate(0.7) invert(1) hue-rotate(180deg); }
+  .leaflet-control-zoom a { background: var(--surface2) !important; color: var(--text) !important; border-color: var(--border) !important; }
+  .leaflet-control-attribution { background: rgba(10,10,10,0.7) !important; color: var(--text3) !important; font-size: 9px !important; }
+  .leaflet-control-attribution a { color: var(--text3) !important; }
+
+  /* Position marker */
+  .pos-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--green); border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(0,230,118,0.3); }
+  .start-dot { width: 14px; height: 14px; border-radius: 50%; background: #40c4ff; border: 3px solid #fff; }
+
+  /* OneDrive */
+  .od-row { background: var(--surface); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 6px; }
+  .od-connected { display: flex; align-items: center; gap: 10px; }
+  .od-avatar { width: 36px; height: 36px; border-radius: 50%; background: #0078d4; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: #fff; flex-shrink: 0; }
+  .od-name { font-size: 14px; font-weight: 500; }
+  .od-email { font-size: 12px; color: var(--text3); margin-top: 1px; }
+  .od-sign-btn { margin-left: auto; padding: 7px 14px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; border: none; cursor: pointer; font-family: 'Barlow', sans-serif; transition: all .15s; }
+  .od-sign-btn.connect { background: #0078d4; color: #fff; }
+  .od-sign-btn.connect:hover { background: #005fa3; }
+  .od-sign-btn.disconnect { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+  .od-sign-btn.disconnect:hover { background: var(--surface3); color: var(--text); }
+  .od-status-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--text3); }
+  .od-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
+  .od-dot.on { background: var(--green); }
+  .od-dot.err { background: var(--red); }
+  .od-client-row { margin-top: 10px; }
+  .od-client-row input { width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px; font-family: 'Barlow', sans-serif; }
+  .od-client-row input::placeholder { color: var(--text3); }
+  .od-client-row label { font-size: 11px; color: var(--text3); display: block; margin-bottom: 5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+
+  /* Toast */
+  #toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--surface3); color: var(--text); padding: 10px 20px; border-radius: 24px; font-size: 14px; font-weight: 500; opacity: 0; transition: all .25s; pointer-events: none; white-space: nowrap; z-index: 9999; border: 1px solid var(--border); }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @supports (padding-bottom: env(safe-area-inset-bottom)) {
+    .panel { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+    #map-overlay { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+  }
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <h1>PACE</h1>
+    <div id="activity-type">
+      <button class="act-btn active" data-type="run" onclick="setActivity('run')">🏃 Run</button>
+      <button class="act-btn" data-type="walk" onclick="setActivity('walk')">🚶 Walk</button>
+    </div>
+  </div>
+  <div id="tabs">
+    <div class="tab active" onclick="showTab('record')">Record</div>
+    <div class="tab" onclick="showTab('map')">Map</div>
+    <div class="tab" onclick="showTab('history')">History</div>
+    <div class="tab" onclick="showTab('settings')">Settings</div>
+  </div>
+  <div id="panels">
+
+    <!-- RECORD -->
+    <div class="panel active" id="panel-record">
+      <div id="big-stats">
+        <div class="primary-stat">
+          <div class="primary-label">Distance</div>
+          <div class="primary-value"><span id="stat-dist">0.00</span><span class="primary-unit" id="dist-unit">km</span></div>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-box"><div class="lbl">Duration</div><div class="val" id="stat-dur">00:00</div></div>
+          <div class="stat-box"><div class="lbl">Pace</div><div class="val" id="stat-pace">--:--</div><div class="unit" id="pace-unit">min/km</div></div>
+          <div class="stat-box"><div class="lbl">Speed</div><div class="val" id="stat-speed">0.0</div><div class="unit" id="speed-unit">km/h</div></div>
+          <div class="stat-box"><div class="lbl">Calories</div><div class="val" id="stat-cal">0</div><div class="unit">kcal</div></div>
+          <div class="stat-box"><div class="lbl">Elev Gain</div><div class="val" id="stat-elev">0</div><div class="unit">m</div></div>
+          <div class="stat-box"><div class="lbl">Altitude</div><div class="val" id="stat-alt">--</div><div class="unit">m</div></div>
+        </div>
+      </div>
+      <div id="mini-map-wrap">
+        <div id="mini-map"></div>
+        <div id="map-empty">
+          <div class="icon">🗺️</div>
+          <p>Map loads when you start</p>
+        </div>
+      </div>
+      <div id="controls">
+        <button class="ctrl-btn" id="btn-start" onclick="startRun()">Start</button>
+        <button class="ctrl-btn" id="btn-pause" onclick="pauseRun()" disabled style="display:none">Pause</button>
+        <button class="ctrl-btn" id="btn-stop" onclick="stopRun()" disabled>Stop</button>
+      </div>
+      <button id="btn-save-run" onclick="saveRun()" disabled>Save Activity</button>
+      <div id="status"><div class="status-dot" id="status-dot"></div><span id="status-txt">Ready. Press Start to begin.</span></div>
+    </div>
+
+    <!-- MAP -->
+    <div class="panel" id="panel-map">
+      <div id="big-map"></div>
+      <div id="map-overlay">
+        <div class="elev-card">
+          <div id="elev-title">Elevation Profile</div>
+          <canvas id="elev-canvas"></canvas>
+          <div id="elev-stats">
+            <div class="elev-stat"><div class="lbl">Max</div><div class="val" id="elev-max">--</div><div style="font-size:10px;color:var(--text3)">m</div></div>
+            <div class="elev-stat"><div class="lbl">Min</div><div class="val" id="elev-min">--</div><div style="font-size:10px;color:var(--text3)">m</div></div>
+            <div class="elev-stat"><div class="lbl">Gain</div><div class="val" id="elev-gain">0</div><div style="font-size:10px;color:var(--text3)">m</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTORY -->
+    <div class="panel" id="panel-history">
+      <div id="no-history"><div class="icon">👟</div><p>No activities yet.<br>Start your first run!</p></div>
+      <div id="history-list"></div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="panel" id="panel-settings">
+      <div class="setting-section">
+        <div class="setting-section-title">Units</div>
+        <div class="setting-row">
+          <div><div class="setting-label">Distance</div></div>
+          <select class="setting-select" id="unit-select" onchange="setUnit(this.value)">
+            <option value="km">Kilometres</option>
+            <option value="mi">Miles</option>
+          </select>
+        </div>
+      </div>
+      <div class="setting-section">
+        <div class="setting-section-title">Profile</div>
+        <div class="setting-row">
+          <div><div class="setting-label">Weight (kg)</div><div class="setting-sub">Used for calorie calculation</div></div>
+          <input type="number" id="weight-input" value="70" min="30" max="200"
+            style="width:60px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:var(--radius-sm);font-size:14px;text-align:right"
+            onchange="settings.weight=+this.value;saveSettings()">
+        </div>
+      </div>
+      <div class="setting-section">
+        <div class="setting-section-title">Map</div>
+        <div class="setting-row">
+          <div><div class="setting-label">Dark map tiles</div><div class="setting-sub">Inverted for night running</div></div>
+          <label class="toggle"><input type="checkbox" id="dark-map-toggle" onchange="settings.darkMap=this.checked;saveSettings();applyMapStyle()"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+      <div class="setting-section">
+        <div class="setting-section-title">Audio Cues</div>
+        <div class="setting-row">
+          <div><div class="setting-label">Voice announcements</div><div class="setting-sub">Distance and pace every km/mi</div></div>
+          <label class="toggle"><input type="checkbox" id="voice-toggle" onchange="settings.voice=this.checked;saveSettings()"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+      <div class="setting-section">
+        <div class="setting-section-title">Display</div>
+        <div class="setting-row">
+          <div><div class="setting-label">Keep screen on</div><div class="setting-sub">Prevents auto-lock while running</div></div>
+          <label class="toggle"><input type="checkbox" id="wakelock-toggle" onchange="toggleWakeLock(this.checked)"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+      <div class="setting-section">
+        <div class="setting-section-title">OneDrive Backup</div>
+        <div class="od-row">
+          <div id="od-setup">
+            <div class="od-client-row">
+              <label>Azure App Client ID</label>
+              <input type="text" id="od-client-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" oninput="settings.odClientId=this.value.trim();saveSettings();odInit()">
+            </div>
+          </div>
+          <div id="od-auth-row" style="margin-top:12px">
+            <div id="od-signed-out">
+              <button class="od-sign-btn connect" onclick="odSignIn()" id="od-signin-btn" disabled>Sign in with Microsoft</button>
+              <div class="od-status-row"><div class="od-dot" id="od-dot-out"></div><span id="od-status-out">Enter your Client ID above to enable</span></div>
+            </div>
+            <div id="od-signed-in" style="display:none">
+              <div class="od-connected">
+                <div class="od-avatar" id="od-avatar">?</div>
+                <div><div class="od-name" id="od-display-name">—</div><div class="od-email" id="od-email">—</div></div>
+                <button class="od-sign-btn disconnect" onclick="odSignOut()">Sign out</button>
+              </div>
+              <div class="od-status-row"><div class="od-dot on"></div><span>GPX files auto-upload to OneDrive / Pace Runs</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="setting-row" style="margin-top:6px">
+          <div><div class="setting-label">Auto-upload on save</div><div class="setting-sub">Uploads GPX to OneDrive when you save an activity</div></div>
+          <label class="toggle"><input type="checkbox" id="od-auto-toggle" onchange="settings.odAuto=this.checked;saveSettings()"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+      <div class="setting-section">
+        <div class="setting-section-title">About</div>
+        <div class="setting-row">
+          <div><div class="setting-label">Pace Run Tracker v3.0</div><div class="setting-sub">Maps by OpenStreetMap · Backup via OneDrive</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
+<script>
+const OSM = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+
+let state = {
+  tracking:false, paused:false, points:[], startTime:null,
+  pausedMs:0, pauseStart:null, watchId:null, timerInterval:null,
+  currentSpeed:0, lastMileAnnounced:0, activity:'run'
+};
+let savedActivities = JSON.parse(localStorage.getItem('pace_activities')||'[]');
+let settings = JSON.parse(localStorage.getItem('pace_settings')||'{"unit":"km","weight":70,"voice":true,"wakelock":true,"darkMap":true}');
+let wakeLock = null;
+
+// MAP instances
+let miniMap=null, bigMap=null;
+let miniLine=null, bigLine=null;
+let miniDot=null, bigDot=null;
+let miniStartDot=null, bigStartDot=null;
+
+const posIcon = L.divIcon({className:'',html:'<div class="pos-dot"></div>',iconSize:[16,16],iconAnchor:[8,8]});
+const startIcon = L.divIcon({className:'',html:'<div class="start-dot"></div>',iconSize:[14,14],iconAnchor:[7,7]});
+
+function initMiniMap(lat,lon) {
+  if(miniMap) return;
+  miniMap = L.map('mini-map',{zoomControl:false,attributionControl:true}).setView([lat,lon],16);
+  L.tileLayer(OSM,{attribution:OSM_ATTR,maxZoom:19}).addTo(miniMap);
+  miniLine = L.polyline([],{color:'#00e676',weight:4,opacity:0.9}).addTo(miniMap);
+  miniDot = L.marker([lat,lon],{icon:posIcon,zIndexOffset:1000}).addTo(miniMap);
+  miniStartDot = L.marker([lat,lon],{icon:startIcon,zIndexOffset:900}).addTo(miniMap);
+  applyMapStyle();
+}
+
+function initBigMap(lat,lon) {
+  if(bigMap) return;
+  bigMap = L.map('big-map',{zoomControl:true,attributionControl:true}).setView([lat,lon],15);
+  L.tileLayer(OSM,{attribution:OSM_ATTR,maxZoom:19}).addTo(bigMap);
+  bigLine = L.polyline([],{color:'#00e676',weight:5,opacity:0.95}).addTo(bigMap);
+  bigDot = L.marker([lat,lon],{icon:posIcon,zIndexOffset:1000}).addTo(bigMap);
+  bigStartDot = L.marker([lat,lon],{icon:startIcon,zIndexOffset:900}).addTo(bigMap);
+  applyMapStyle();
+}
+
+function applyMapStyle() {
+  const on = settings.darkMap!==false;
+  document.getElementById('mini-map') && document.getElementById('mini-map').classList.toggle('dark-tiles',on);
+  document.getElementById('big-map') && document.getElementById('big-map').classList.toggle('dark-tiles',on);
+  // Also apply filter directly since class may not cascade into shadow
+  document.querySelectorAll('#mini-map .leaflet-tile-pane, #big-map .leaflet-tile-pane').forEach(el=>{
+    el.style.filter = on ? 'brightness(0.85) saturate(0.7) invert(1) hue-rotate(180deg)' : 'none';
+  });
+}
+
+function updateMaps(pts) {
+  if(!pts.length) return;
+  const last=pts[pts.length-1];
+  const lls=pts.map(p=>[p.lat,p.lon]);
+  if(miniMap){
+    miniLine.setLatLngs(lls);
+    miniDot.setLatLng([last.lat,last.lon]);
+    miniMap.panTo([last.lat,last.lon],{animate:true,duration:0.4});
+    miniMap.invalidateSize();
+  }
+  if(bigMap){
+    bigLine.setLatLngs(lls);
+    bigDot.setLatLng([last.lat,last.lon]);
+    if(pts.length>1) bigMap.fitBounds(bigLine.getBounds(),{padding:[40,40],maxZoom:17});
+    else bigMap.panTo([last.lat,last.lon]);
+    bigMap.invalidateSize();
+  }
+}
+
+function loadRouteOnBigMap(pts) {
+  const lat=pts[0].lat, lon=pts[0].lon;
+  if(!bigMap) initBigMap(lat,lon);
+  const lls=pts.map(p=>[p.lat,p.lon]);
+  bigLine.setLatLngs(lls);
+  bigDot.setLatLng([pts[pts.length-1].lat,pts[pts.length-1].lon]);
+  bigStartDot.setLatLng([lat,lon]);
+  bigMap.fitBounds(bigLine.getBounds(),{padding:[40,40],maxZoom:17});
+  bigMap.invalidateSize();
+}
+
+// TABS
+function showTab(name) {
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  document.querySelectorAll('.tab').forEach(t=>{if(t.textContent.toLowerCase()===name)t.classList.add('active');});
+  if(name==='map'){
+    if(!bigMap && state.points.length>0){initBigMap(state.points[0].lat,state.points[0].lon);}
+    setTimeout(()=>{
+      if(bigMap){bigMap.invalidateSize();updateMaps(state.points);}
+      drawElevation();
+    },80);
+  }
+  if(name==='history') renderHistory();
+}
+
+function setActivity(type){
+  state.activity=type;
+  document.querySelectorAll('.act-btn').forEach(b=>b.classList.toggle('active',b.dataset.type===type));
+}
+
+// MATH
+function haversine(a,b){
+  const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLon=(b.lon-a.lon)*Math.PI/180;
+  const s=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+}
+function totalDist(pts){let d=0;for(let i=1;i<pts.length;i++)d+=haversine(pts[i-1],pts[i]);return d;}
+function elevGain(pts){let g=0;for(let i=1;i<pts.length;i++){const d=pts[i].alt-pts[i-1].alt;if(d>0)g+=d;}return Math.round(g);}
+function calcPace(distKm,secs){
+  if(distKm<0.01||secs<1)return'--:--';
+  const p=secs/60/distKm,m=Math.floor(p),s=Math.round((p-m)*60);
+  return m+':'+(s<10?'0'+s:s);
+}
+function calcCalories(distKm,secs,weight){return Math.round((state.activity==='run'?8.0:3.5)*weight*(secs/3600));}
+function toDisplay(km){return settings.unit==='mi'?(km*0.621371).toFixed(2):km.toFixed(2);}
+function toDisplayPace(km,secs){return calcPace(settings.unit==='mi'?km*0.621371:km,secs);}
+
+// ELEVATION CHART
+function drawElevation(){
+  const c=document.getElementById('elev-canvas');if(!c)return;
+  c.width=c.parentElement.offsetWidth;c.height=80;
+  const ctx=c.getContext('2d');
+  ctx.clearRect(0,0,c.width,c.height);
+  const pts=state.points.filter(p=>p.alt!=null);
+  if(pts.length<2){ctx.fillStyle='rgba(255,255,255,0.04)';ctx.fillRect(0,0,c.width,c.height);return;}
+  const alts=pts.map(p=>p.alt),minA=Math.min(...alts),maxA=Math.max(...alts),range=maxA-minA||1;
+  const pad=6;
+  const xs=pts.map((_,i)=>pad+(c.width-pad*2)*i/(pts.length-1));
+  const ys=pts.map(p=>c.height-pad-(c.height-pad*2)*(p.alt-minA)/range);
+  const g=ctx.createLinearGradient(0,0,0,c.height);
+  g.addColorStop(0,'rgba(0,230,118,0.4)');g.addColorStop(1,'rgba(0,230,118,0.02)');
+  ctx.beginPath();ctx.moveTo(xs[0],ys[0]);
+  xs.forEach((x,i)=>ctx.lineTo(x,ys[i]));
+  ctx.lineTo(xs[xs.length-1],c.height);ctx.lineTo(xs[0],c.height);ctx.closePath();
+  ctx.fillStyle=g;ctx.fill();
+  ctx.beginPath();ctx.moveTo(xs[0],ys[0]);
+  xs.forEach((x,i)=>ctx.lineTo(x,ys[i]));
+  ctx.strokeStyle='#00e676';ctx.lineWidth=2;ctx.stroke();
+  document.getElementById('elev-max').textContent=Math.round(maxA);
+  document.getElementById('elev-min').textContent=Math.round(minA);
+  document.getElementById('elev-gain').textContent=elevGain(pts);
+}
+
+// TIMER
+function elapsed(){if(!state.startTime)return 0;return Math.max(0,Math.floor((Date.now()-state.startTime-state.pausedMs)/1000));}
+function fmtTime(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;if(h>0)return h+':'+(m<10?'0'+m:m)+':'+(sec<10?'0'+sec:sec);return(m<10?'0'+m:m)+':'+(sec<10?'0'+sec:sec);}
+
+function updateStats(){
+  const pts=state.points,secs=elapsed(),distKm=totalDist(pts);
+  document.getElementById('stat-dist').textContent=toDisplay(distKm);
+  document.getElementById('stat-dur').textContent=fmtTime(secs);
+  document.getElementById('stat-pace').textContent=toDisplayPace(distKm,secs);
+  const spd=state.currentSpeed*3.6*(settings.unit==='mi'?0.621371:1);
+  document.getElementById('stat-speed').textContent=spd.toFixed(1);
+  document.getElementById('stat-cal').textContent=calcCalories(distKm,secs,settings.weight);
+  document.getElementById('stat-elev').textContent=elevGain(pts.filter(p=>p.alt!=null));
+  const lastAlt=pts.length>0&&pts[pts.length-1].alt!=null?Math.round(pts[pts.length-1].alt):'--';
+  document.getElementById('stat-alt').textContent=lastAlt;
+  const milestone=settings.unit==='mi'?Math.floor(distKm*0.621371):Math.floor(distKm);
+  if(settings.voice&&milestone>0&&milestone>state.lastMileAnnounced){
+    state.lastMileAnnounced=milestone;
+    const u=settings.unit==='mi'?'mile':'kilometre';
+    speak(`${milestone} ${u}${milestone>1?'s':''}. Pace: ${toDisplayPace(distKm,secs).replace(':','minutes')} per ${u}.`);
+  }
+}
+
+// RECORDING
+function startRun(){
+  if(!navigator.geolocation){showToast('Geolocation not supported');return;}
+  state.points=[];state.startTime=Date.now();state.pausedMs=0;
+  state.paused=false;state.tracking=true;state.lastMileAnnounced=0;
+  document.getElementById('btn-start').style.display='none';
+  document.getElementById('btn-pause').style.display='';
+  document.getElementById('btn-pause').disabled=false;
+  document.getElementById('btn-stop').disabled=false;
+  document.getElementById('btn-save-run').disabled=true;
+  setStatus('Acquiring GPS signal...','live');
+  requestWakeLock();
+  state.watchId=navigator.geolocation.watchPosition(pos=>{
+    if(state.paused)return;
+    const pt={lat:pos.coords.latitude,lon:pos.coords.longitude,
+      alt:pos.coords.altitude,acc:pos.coords.accuracy,ts:Date.now()};
+    state.currentSpeed=pos.coords.speed||0;
+    state.points.push(pt);
+    if(state.points.length===1){
+      document.getElementById('map-empty').style.display='none';
+      initMiniMap(pt.lat,pt.lon);
+    }
+    updateMaps(state.points);
+    setStatus('Tracking — '+state.points.length+' GPS points','live');
+  },err=>{setStatus('GPS error: '+err.message,'');},{enableHighAccuracy:true,maximumAge:2000,timeout:20000});
+  state.timerInterval=setInterval(()=>{if(!state.paused)updateStats();},1000);
+  if(settings.voice)speak(state.activity==='run'?'Run started. Good luck!':'Walk started. Let\'s go!');
+}
+
+function pauseRun(){
+  if(state.paused){
+    state.pausedMs+=Date.now()-state.pauseStart;state.paused=false;
+    document.getElementById('btn-pause').textContent='Pause';
+    setStatus('Tracking active','live');if(settings.voice)speak('Resumed.');
+  } else {
+    state.pauseStart=Date.now();state.paused=true;
+    document.getElementById('btn-pause').textContent='Resume';
+    setStatus('Paused','paused');if(settings.voice)speak('Paused.');
+  }
+}
+
+function stopRun(){
+  if(state.watchId!==null){navigator.geolocation.clearWatch(state.watchId);state.watchId=null;}
+  clearInterval(state.timerInterval);state.tracking=false;
+  document.getElementById('btn-pause').style.display='none';
+  document.getElementById('btn-start').style.display='';
+  document.getElementById('btn-start').disabled=false;
+  document.getElementById('btn-stop').disabled=true;
+  document.getElementById('btn-save-run').disabled=state.points.length<2;
+  releaseWakeLock();updateStats();
+  setStatus('Stopped. '+(state.points.length>1?'Tap Save to keep this activity.':'No data.'),'');
+  if(settings.voice&&state.points.length>1)
+    speak(`Activity stopped. Total distance: ${toDisplay(totalDist(state.points))} ${settings.unit==='mi'?'miles':'kilometres'}.`);
+}
+
+function saveRun(){
+  if(state.points.length<2)return;
+  const secs=elapsed(),distKm=totalDist(state.points);
+  const act={id:Date.now(),type:state.activity,date:new Date().toISOString(),distKm,secs,
+    calories:calcCalories(distKm,secs,settings.weight),
+    elevGain:elevGain(state.points.filter(p=>p.alt!=null)),
+    points:state.points.map(p=>({lat:p.lat,lon:p.lon,alt:p.alt,ts:p.ts}))};
+  savedActivities.unshift(act);
+  localStorage.setItem('pace_activities',JSON.stringify(savedActivities));
+  document.getElementById('btn-save-run').disabled=true;
+  showToast('Activity saved!');
+  if(settings.voice)speak('Activity saved!');
+  if(odAccount && settings.odAuto!==false) odUploadGPX(act);
+}
+
+// EXPORT
+function exportGPX(act){ dlFile(buildGPX(act),`pace-${act.id}.gpx`,'application/gpx+xml'); }
+function exportCSV(act){
+  const rows=[['lat','lon','altitude_m','timestamp']];
+  act.points.forEach(p=>rows.push([p.lat.toFixed(7),p.lon.toFixed(7),p.alt!=null?p.alt.toFixed(1):'',new Date(p.ts).toISOString()]));
+  dlFile(rows.map(r=>r.join(',')).join('\n'),`pace-${act.id}.csv`,'text/csv');
+}
+function dlFile(content,filename,mime){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([content],{type:mime}));
+  a.download=filename;document.body.appendChild(a);a.click();document.body.removeChild(a);
+}
+
+// HISTORY
+function renderHistory(){
+  const el=document.getElementById('history-list'),empty=document.getElementById('no-history');
+  if(!savedActivities.length){empty.style.display='block';el.innerHTML='';return;}
+  empty.style.display='none';el.innerHTML='';
+  savedActivities.forEach((act,i)=>{
+    const d=toDisplay(act.distKm),unit=settings.unit;
+    const pace=calcPace(settings.unit==='mi'?act.distKm*0.621371:act.distKm,act.secs);
+    const date=new Date(act.date);
+    const ds=date.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})+' '+date.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    const div=document.createElement('div');div.className='history-item';
+    div.innerHTML=`
+      <div class="history-header">
+        <div><div class="history-name">${act.type==='run'?'🏃 Run':'🚶 Walk'}</div><div class="history-date">${ds}</div></div>
+        <div class="history-type">${act.type.toUpperCase()}</div>
+      </div>
+      <div class="history-stats">
+        <div class="hs"><div class="lbl">Dist</div><div class="val">${d}</div><div class="unit">${unit}</div></div>
+        <div class="hs"><div class="lbl">Time</div><div class="val">${fmtTime(act.secs)}</div></div>
+        <div class="hs"><div class="lbl">Pace</div><div class="val">${pace}</div><div class="unit">/${unit}</div></div>
+        <div class="hs"><div class="lbl">Cal</div><div class="val">${act.calories}</div><div class="unit">kcal</div></div>
+      </div>
+      <div class="export-row">
+        <button class="export-btn" onclick="viewHistoryMap(${i})">View map</button>
+        <button class="export-btn" onclick="exportGPX(savedActivities[${i}])">GPX</button>
+        <button class="export-btn" onclick="exportCSV(savedActivities[${i}])">CSV</button>
+        <button class="export-btn" style="color:var(--red)" onclick="deleteActivity(${i})">Delete</button>
+      </div>`;
+    el.appendChild(div);
+  });
+}
+
+function viewHistoryMap(i){
+  const act=savedActivities[i];
+  const prev=state.points; state.points=act.points;
+  showTab('map');
+  setTimeout(()=>{loadRouteOnBigMap(act.points);drawElevation();},100);
+  state.points=prev;
+}
+
+function deleteActivity(i){savedActivities.splice(i,1);localStorage.setItem('pace_activities',JSON.stringify(savedActivities));renderHistory();}
+
+// SETTINGS
+function setUnit(u){settings.unit=u;saveSettings();updateUnitLabels();}
+function updateUnitLabels(){
+  document.getElementById('dist-unit').textContent=settings.unit;
+  document.getElementById('pace-unit').textContent='min/'+settings.unit;
+  document.getElementById('speed-unit').textContent=settings.unit==='mi'?'mph':'km/h';
+}
+function saveSettings(){localStorage.setItem('pace_settings',JSON.stringify(settings));}
+
+// WAKE LOCK
+async function requestWakeLock(){if(!settings.wakelock)return;try{if('wakeLock'in navigator)wakeLock=await navigator.wakeLock.request('screen');}catch(e){}}
+async function releaseWakeLock(){try{if(wakeLock){await wakeLock.release();wakeLock=null;}}catch(e){}}
+function toggleWakeLock(on){settings.wakelock=on;saveSettings();if(!on)releaseWakeLock();}
+
+// VOICE
+function speak(text){
+  if(!settings.voice||!window.speechSynthesis)return;
+  window.speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);u.rate=1;u.pitch=1;u.volume=1;
+  window.speechSynthesis.speak(u);
+}
+
+// STATUS / TOAST
+function setStatus(txt,mode){
+  document.getElementById('status-txt').textContent=txt;
+  document.getElementById('status-dot').className='status-dot'+(mode==='live'?' live':mode==='paused'?' paused':'');
+}
+function showToast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// ── ONEDRIVE / MSAL ──
+let msalInstance = null;
+let odAccount = null;
+const OD_SCOPES = ['Files.ReadWrite', 'User.Read'];
+const OD_FOLDER = 'Pace Runs';
+
+function odInit() {
+  const clientId = settings.odClientId || '';
+  const btn = document.getElementById('od-signin-btn');
+  const statusEl = document.getElementById('od-status-out');
+  const dotEl = document.getElementById('od-dot-out');
+  if (!clientId || clientId.length < 10) {
+    if(btn) btn.disabled = true;
+    if(statusEl) statusEl.textContent = 'Enter your Client ID above to enable';
+    if(dotEl) dotEl.className = 'od-dot';
+    msalInstance = null; return;
+  }
+  try {
+    msalInstance = new msal.PublicClientApplication({
+      auth: {
+        clientId,
+        authority: 'https://login.microsoftonline.com/common',
+        redirectUri: window.location.href.split('?')[0].split('#')[0]
+      },
+      cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true }
+    });
+    msalInstance.initialize().then(() => {
+      msalInstance.handleRedirectPromise().then(resp => {
+        if (resp && resp.account) { odAccount = resp.account; odUpdateUI(); }
+        else {
+          const accounts = msalInstance.getAllAccounts();
+          if (accounts.length) { odAccount = accounts[0]; odUpdateUI(); }
+          else { odShowSignedOut(); }
+        }
+      }).catch(() => odShowSignedOut());
+    });
+    if(btn) btn.disabled = false;
+    if(statusEl) statusEl.textContent = 'Sign in to connect your OneDrive';
+    if(dotEl) dotEl.className = 'od-dot';
+  } catch(e) {
+    if(statusEl) statusEl.textContent = 'Invalid Client ID';
+    if(dotEl) dotEl.className = 'od-dot err';
+  }
+}
+
+async function odSignIn() {
+  if (!msalInstance) return;
+  try {
+    await msalInstance.loginPopup({ scopes: OD_SCOPES });
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length) { odAccount = accounts[0]; odUpdateUI(); }
+  } catch(e) {
+    showToast('Sign-in cancelled or failed');
+  }
+}
+
+function odSignOut() {
+  if (!msalInstance || !odAccount) return;
+  msalInstance.logoutPopup({ account: odAccount }).then(() => {
+    odAccount = null; odShowSignedOut();
+  });
+}
+
+function odShowSignedOut() {
+  document.getElementById('od-signed-out').style.display = '';
+  document.getElementById('od-signed-in').style.display = 'none';
+  const btn = document.getElementById('od-signin-btn');
+  if(btn) btn.disabled = !settings.odClientId;
+  const st = document.getElementById('od-status-out');
+  if(st) st.textContent = settings.odClientId ? 'Sign in to connect your OneDrive' : 'Enter your Client ID above to enable';
+}
+
+function odUpdateUI() {
+  if (!odAccount) { odShowSignedOut(); return; }
+  document.getElementById('od-signed-out').style.display = 'none';
+  document.getElementById('od-signed-in').style.display = '';
+  const name = odAccount.name || odAccount.username || '?';
+  const initials = name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+  document.getElementById('od-avatar').textContent = initials;
+  document.getElementById('od-display-name').textContent = name;
+  document.getElementById('od-email').textContent = odAccount.username || '';
+}
+
+async function odGetToken() {
+  if (!msalInstance || !odAccount) return null;
+  try {
+    const resp = await msalInstance.acquireTokenSilent({ scopes: OD_SCOPES, account: odAccount });
+    return resp.accessToken;
+  } catch(e) {
+    try {
+      const resp = await msalInstance.acquireTokenPopup({ scopes: OD_SCOPES });
+      return resp.accessToken;
+    } catch(e2) { return null; }
+  }
+}
+
+async function odEnsureFolder(token) {
+  const url = `https://graph.microsoft.com/v1.0/me/drive/root:/${OD_FOLDER}`;
+  const check = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (check.ok) return true;
+  const create = await fetch('https://graph.microsoft.com/v1.0/me/drive/root/children', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: OD_FOLDER, folder: {}, '@microsoft.graph.conflictBehavior': 'rename' })
+  });
+  return create.ok;
+}
+
+async function odUploadGPX(act) {
+  if (!odAccount || !settings.odAuto) return;
+  const token = await odGetToken();
+  if (!token) { showToast('OneDrive: sign-in needed'); return; }
+  await odEnsureFolder(token);
+  const gpx = buildGPX(act);
+  const filename = `pace-${new Date(act.date).toISOString().slice(0,10)}-${act.id}.gpx`;
+  const uploadUrl = `https://graph.microsoft.com/v1.0/me/drive/root:/${OD_FOLDER}/${filename}:/content`;
+  const resp = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/gpx+xml' },
+    body: gpx
+  });
+  if (resp.ok) showToast('Uploaded to OneDrive ✓');
+  else showToast('OneDrive upload failed');
+}
+
+function buildGPX(act) {
+  const lines = ['<?xml version="1.0"?>',
+    '<gpx version="1.1" creator="Pace Run Tracker" xmlns="http://www.topografix.com/GPX/1/1">',
+    '<trk>', `<name>${act.type==='run'?'Run':'Walk'} ${new Date(act.date).toLocaleDateString()}</name>`, '<trkseg>'];
+  act.points.forEach(p => {
+    const alt = p.alt != null ? `<ele>${p.alt.toFixed(1)}</ele>` : '';
+    lines.push(`<trkpt lat="${p.lat.toFixed(7)}" lon="${p.lon.toFixed(7)}">${alt}<time>${new Date(p.ts).toISOString()}</time></trkpt>`);
+  });
+  lines.push('</trkseg>', '</trk>', '</gpx>');
+  return lines.join('\n');
+}
+
+// ── INIT — apply saved settings ──
+document.getElementById('unit-select').value = settings.unit;
+document.getElementById('weight-input').value = settings.weight;
+document.getElementById('voice-toggle').checked = settings.voice !== false;
+document.getElementById('wakelock-toggle').checked = settings.wakelock !== false;
+document.getElementById('dark-map-toggle').checked = settings.darkMap !== false;
+document.getElementById('od-auto-toggle').checked = settings.odAuto !== false;
+if (settings.odClientId) document.getElementById('od-client-id').value = settings.odClientId;
+updateUnitLabels();
+odInit();
+</script>
+</body>
+</html>
