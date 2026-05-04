@@ -872,6 +872,13 @@ document.getElementById('voice-toggle').checked = settings.voice !== false;
 document.getElementById('wakelock-toggle').checked = settings.wakelock !== false;
 document.getElementById('dark-map-toggle').checked = settings.darkMap !== false;
 document.getElementById('od-auto-toggle').checked = settings.odAuto !== false;
+// Pre-fill Client ID from URL param e.g. ?client=xxxxxxxx
+const urlParams = new URLSearchParams(window.location.search);
+const urlClientId = urlParams.get('client');
+if (urlClientId && urlClientId.length > 10) {
+  settings.odClientId = urlClientId;
+  saveSettings();
+}
 if (settings.odClientId) document.getElementById('od-client-id').value = settings.odClientId;
 if (settings.runnerName) document.getElementById('runner-name').value = settings.runnerName;
 updateUnitLabels();
