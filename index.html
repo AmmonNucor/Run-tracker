@@ -270,10 +270,17 @@
       <div class="setting-section">
         <div class="setting-section-title">Profile</div>
         <div class="setting-row">
-          <div><div class="setting-label">Weight (kg)</div><div class="setting-sub">Used for calorie calculation</div></div>
-          <input type="number" id="weight-input" value="70" min="30" max="200"
-            style="width:60px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:var(--radius-sm);font-size:14px;text-align:right"
-            onchange="settings.weight=+this.value;saveSettings()">
+          <div><div class="setting-label">Weight</div><div class="setting-sub">Used for calorie calculation</div></div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="number" id="weight-input" value="70" min="30" max="500"
+              style="width:64px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:var(--radius-sm);font-size:14px;text-align:right"
+              onchange="settings.weight=convertWeightToKg(+this.value,settings.weightUnit);saveSettings()">
+            <select class="setting-select" id="weight-unit-select" onchange="setWeightUnit(this.value)">
+              <option value="kg">kg</option>
+              <option value="lb">lb</option>
+              <option value="st">st</option>
+            </select>
+          </div>
         </div>
       </div>
       <div class="setting-section">
@@ -664,6 +671,24 @@ async function loadActivities(){
 
 // SETTINGS
 function setUnit(u){settings.unit=u;saveSettings();updateUnitLabels();}
+
+function convertWeightToKg(val, unit){
+  if(unit==='lb') return val*0.453592;
+  if(unit==='st') return val*6.35029;
+  return val;
+}
+function convertWeightFromKg(kg, unit){
+  if(unit==='lb') return Math.round(kg*2.20462);
+  if(unit==='st') return +(kg/6.35029).toFixed(1);
+  return Math.round(kg);
+}
+function setWeightUnit(unit){
+  const currentKg = settings.weight||70;
+  settings.weightUnit = unit;
+  const display = convertWeightFromKg(currentKg, unit);
+  document.getElementById('weight-input').value = display;
+  saveSettings();
+}
 function updateUnitLabels(){
   document.getElementById('dist-unit').textContent=settings.unit;
   document.getElementById('pace-unit').textContent='min/'+settings.unit;
@@ -867,7 +892,7 @@ function buildGPX(act) {
 
 // ── INIT — apply saved settings ──
 document.getElementById('unit-select').value = settings.unit;
-document.getElementById('weight-input').value = settings.weight;
+// weight display handled above
 document.getElementById('voice-toggle').checked = settings.voice !== false;
 document.getElementById('wakelock-toggle').checked = settings.wakelock !== false;
 document.getElementById('dark-map-toggle').checked = settings.darkMap !== false;
@@ -879,6 +904,10 @@ if (urlClientId && urlClientId.length > 10) {
   settings.odClientId = urlClientId;
   saveSettings();
 }
+// Restore weight display in chosen unit
+const wUnit = settings.weightUnit||'kg';
+document.getElementById('weight-unit-select').value = wUnit;
+document.getElementById('weight-input').value = convertWeightFromKg(settings.weight||70, wUnit);
 if (settings.odClientId) document.getElementById('od-client-id').value = settings.odClientId;
 if (settings.runnerName) document.getElementById('runner-name').value = settings.runnerName;
 updateUnitLabels();
