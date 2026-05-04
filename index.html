@@ -249,6 +249,15 @@
     <!-- SETTINGS -->
     <div class="panel" id="panel-settings">
       <div class="setting-section">
+        <div class="setting-section-title">Your Profile</div>
+        <div class="setting-row">
+          <div><div class="setting-label">Your name</div><div class="setting-sub">Used to identify your runs in shared OneDrive</div></div>
+          <input type="text" id="runner-name" placeholder="e.g. Ammon"
+            style="width:110px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:var(--radius-sm);font-size:14px;text-align:right"
+            oninput="settings.runnerName=this.value.trim();saveSettings()">
+        </div>
+      </div>
+      <div class="setting-section">
         <div class="setting-section-title">Units</div>
         <div class="setting-row">
           <div><div class="setting-label">Distance</div></div>
@@ -426,7 +435,7 @@ function showTab(name) {
       drawElevation();
     },80);
   }
-  if(name==='history') renderHistory();
+  if(name==='history'){ loadActivities().then(()=>renderHistory()); }
 }
 
 function setActivity(type){
@@ -561,9 +570,10 @@ function saveRun(){
   const act={id:Date.now(),type:state.activity,date:new Date().toISOString(),distKm,secs,
     calories:calcCalories(distKm,secs,settings.weight),
     elevGain:elevGain(state.points.filter(p=>p.alt!=null)),
+    runner:settings.runnerName||'Unknown',
     points:state.points.map(p=>({lat:p.lat,lon:p.lon,alt:p.alt,ts:p.ts}))};
   savedActivities.unshift(act);
-  localStorage.setItem('pace_activities',JSON.stringify(savedActivities));
+  persistActivities();
   document.getElementById('btn-save-run').disabled=true;
   showToast('Activity saved!');
   if(settings.voice)speak('Activity saved!');
@@ -596,7 +606,7 @@ function renderHistory(){
     const div=document.createElement('div');div.className='history-item';
     div.innerHTML=`
       <div class="history-header">
-        <div><div class="history-name">${act.type==='run'?'🏃 Run':'🚶 Walk'}</div><div class="history-date">${ds}</div></div>
+        <div><div class="history-name">${act.type==='run'?'🏃 Run':'🚶 Walk'}${act.runner?' · '+act.runner:''}</div><div class="history-date">${ds}</div></div>
         <div class="history-type">${act.type.toUpperCase()}</div>
       </div>
       <div class="history-stats">
@@ -623,7 +633,34 @@ function viewHistoryMap(i){
   state.points=prev;
 }
 
-function deleteActivity(i){savedActivities.splice(i,1);localStorage.setItem('pace_activities',JSON.stringify(savedActivities));renderHistory();}
+async function deleteActivity(i){
+  savedActivities.splice(i,1);
+  persistActivities();
+  renderHistory();
+}
+
+// Persist to localStorage + OneDrive history.json
+function persistActivities(){
+  localStorage.setItem('pace_activities',JSON.stringify(savedActivities));
+  if(odAccount) odSaveHistory();
+}
+
+// Load history: prefer OneDrive if signed in, merge with local
+async function loadActivities(){
+  if(odAccount){
+    const remote = await odLoadHistory();
+    if(remote !== null){
+      const localActs = JSON.parse(localStorage.getItem('pace_activities')||'[]');
+      const merged = Object.values(
+        [...localActs,...remote].reduce((acc,a)=>{acc[a.id]=a;return acc;},{})
+      ).sort((a,b)=>b.id-a.id);
+      savedActivities = merged;
+      localStorage.setItem('pace_activities',JSON.stringify(savedActivities));
+      return;
+    }
+  }
+  savedActivities = JSON.parse(localStorage.getItem('pace_activities')||'[]');
+}
 
 // SETTINGS
 function setUnit(u){settings.unit=u;saveSettings();updateUnitLabels();}
@@ -738,6 +775,8 @@ function odUpdateUI() {
   document.getElementById('od-avatar').textContent = initials;
   document.getElementById('od-display-name').textContent = name;
   document.getElementById('od-email').textContent = odAccount.username || '';
+  // Sync history from OneDrive on sign-in
+  loadActivities().then(() => renderHistory());
 }
 
 async function odGetToken() {
@@ -782,6 +821,38 @@ async function odUploadGPX(act) {
   else showToast('OneDrive upload failed');
 }
 
+async function odSaveHistory() {
+  const token = await odGetToken();
+  if (!token) return;
+  await odEnsureFolder(token);
+  // Strip GPS point arrays to keep file small — store metadata only
+  const slim = savedActivities.map(a=>({
+    id:a.id, type:a.type, date:a.date, distKm:a.distKm, secs:a.secs,
+    calories:a.calories, elevGain:a.elevGain,
+    runner:a.runner||settings.runnerName||'Unknown',
+    points:a.points
+  }));
+  const safeName = (settings.runnerName||'shared').toLowerCase().replace(/[^a-z0-9]/g,'-');
+  const url = `https://graph.microsoft.com/v1.0/me/drive/root:/${OD_FOLDER}/history-${safeName}.json:/content`;
+  await fetch(url, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(slim)
+  });
+}
+
+async function odLoadHistory() {
+  const token = await odGetToken();
+  if (!token) return null;
+  try {
+    const safeName = (settings.runnerName||'shared').toLowerCase().replace(/[^a-z0-9]/g,'-');
+    const url = `https://graph.microsoft.com/v1.0/me/drive/root:/${OD_FOLDER}/history-${safeName}.json:/content`;
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch(e) { return null; }
+}
+
 function buildGPX(act) {
   const lines = ['<?xml version="1.0"?>',
     '<gpx version="1.1" creator="Pace Run Tracker" xmlns="http://www.topografix.com/GPX/1/1">',
@@ -802,6 +873,7 @@ document.getElementById('wakelock-toggle').checked = settings.wakelock !== false
 document.getElementById('dark-map-toggle').checked = settings.darkMap !== false;
 document.getElementById('od-auto-toggle').checked = settings.odAuto !== false;
 if (settings.odClientId) document.getElementById('od-client-id').value = settings.odClientId;
+if (settings.runnerName) document.getElementById('runner-name').value = settings.runnerName;
 updateUnitLabels();
 odInit();
 </script>
