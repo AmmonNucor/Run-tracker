@@ -293,8 +293,18 @@
       <div class="setting-section">
         <div class="setting-section-title">Audio Cues</div>
         <div class="setting-row">
-          <div><div class="setting-label">Voice announcements</div><div class="setting-sub">Distance and pace every km/mi</div></div>
+          <div><div class="setting-label">Voice announcements</div><div class="setting-sub">Distance and pace at set intervals</div></div>
           <label class="toggle"><input type="checkbox" id="voice-toggle" onchange="settings.voice=this.checked;saveSettings()"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="setting-row" style="margin-top:6px">
+          <div><div class="setting-label">Announcement interval</div><div class="setting-sub">How often to announce distance</div></div>
+          <select class="setting-select" id="voice-interval" onchange="settings.voiceInterval=+this.value;saveSettings()">
+            <option value="0.5">Every 0.5</option>
+            <option value="1" selected>Every 1</option>
+            <option value="2">Every 2</option>
+            <option value="5">Every 5</option>
+            <option value="10">Every 10</option>
+          </select>
         </div>
       </div>
       <div class="setting-section">
@@ -357,7 +367,7 @@ let state = {
   currentSpeed:0, lastMileAnnounced:0, activity:'run'
 };
 let savedActivities = JSON.parse(localStorage.getItem('pace_activities')||'[]');
-let settings = JSON.parse(localStorage.getItem('pace_settings')||'{"unit":"km","weight":70,"voice":true,"wakelock":true,"darkMap":true}');
+let settings = JSON.parse(localStorage.getItem('pace_settings')||'{"unit":"km","weight":70,"voice":true,"wakelock":true,"darkMap":true,"voiceInterval":1}');
 let wakeLock = null;
 
 // MAP instances
@@ -508,11 +518,14 @@ function updateStats(){
   document.getElementById('stat-elev').textContent=elevGain(pts.filter(p=>p.alt!=null));
   const lastAlt=pts.length>0&&pts[pts.length-1].alt!=null?Math.round(pts[pts.length-1].alt):'--';
   document.getElementById('stat-alt').textContent=lastAlt;
-  const milestone=settings.unit==='mi'?Math.floor(distKm*0.621371):Math.floor(distKm);
-  if(settings.voice&&milestone>0&&milestone>state.lastMileAnnounced){
-    state.lastMileAnnounced=milestone;
-    const u=settings.unit==='mi'?'mile':'kilometre';
-    speak(`${milestone} ${u}${milestone>1?'s':''}. Pace: ${toDisplayPace(distKm,secs).replace(':','minutes')} per ${u}.`);
+  const interval = settings.voiceInterval || 1;
+  const distDisplay = settings.unit==='mi' ? distKm*0.621371 : distKm;
+  const milestone = Math.floor(distDisplay / interval);
+  if(settings.voice && milestone > 0 && milestone > state.lastMileAnnounced){
+    state.lastMileAnnounced = milestone;
+    const u = settings.unit==='mi' ? 'mile' : 'kilometre';
+    const announced = (milestone * interval).toFixed(interval < 1 ? 1 : 0);
+    speak(`${announced} ${u}${+announced !== 1 ? 's' : ''}. Pace: ${toDisplayPace(distKm,secs).replace(':','minutes')} per ${u}.`);
   }
 }
 
@@ -894,6 +907,7 @@ function buildGPX(act) {
 document.getElementById('unit-select').value = settings.unit;
 // weight display handled above
 document.getElementById('voice-toggle').checked = settings.voice !== false;
+if (settings.voiceInterval) document.getElementById('voice-interval').value = settings.voiceInterval;
 document.getElementById('wakelock-toggle').checked = settings.wakelock !== false;
 document.getElementById('dark-map-toggle').checked = settings.darkMap !== false;
 document.getElementById('od-auto-toggle').checked = settings.odAuto !== false;
